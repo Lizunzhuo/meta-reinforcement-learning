@@ -1,0 +1,12 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="env.mec_offloaing_envs.offloading_task_graph.OffloadingTaskGraph.encode_point_sequence_with_ranking_and_cost" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
