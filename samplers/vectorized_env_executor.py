@@ -110,12 +110,53 @@ class MetaParallelEnvExecutor(object):
 
 def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
     """
-    
-    :param remote:
-    :param parent_remote:
-    :param env_pickle:
-    :param n_envs:
-    :param max_path_length:
-    :param seed:
+    Instantiation of a parallel worker for collecting samples. It loops continually checking the task that the remote sends to it
+
+    :param remote(multiprocessing.Connection):
+    :param parent_remote(multiprocessing.Connection):
+    :param env_pickle(pkl): pickled environment
+    :param n_envs(int): numberof environments per worker
+    :param max_path_length(int): maximum path length of the task
+    :param seed(int): random seed for the worker
     :return:
     """
+
+    parent_remote.close()
+
+    envs = [pickle.loads(env_pickle) for _ in range(n_envs)]
+    np.random.seed(seed)
+
+    ts = np.zeros(n_envs, dtype='int')
+
+    while True:
+        # receive command and dtat from the remote
+        cmd, data = remote.recv()
+
+        # do a step in each of the environment of the worker
+        if cmd == 'step':
+            all_results = [env.step(a) for (a, env) in zip(data, envs)]
+            obs, rewards, dones, infos = map(list, zip(*all_results))
+            ts += 1
+            for i in range(n_envs):
+                if dones[i] or (ts[i] >= max_path_length):
+                    dones[i] = True
+                    obs[i] = envs[i].reset()
+                    ts[i] = 0
+                remote.seed(obs, rewards, dones, infos)
+
+        # reset all the environments of the worker
+        elif cmd == 'reset':
+            obs = [env.reset() for env in envs]
+            ts[:] = 0
+            remote.send(obs)
+
+        # set the specified task for each of the environments of the worker
+        elif cmd == 'set_task':
+            for env in envs:
+                env.set_task(data)
+            remote.send(None)
+
+        # close the remote and stop the worker
+        elif cmd == 'close':
+            remote.close()
+            break
