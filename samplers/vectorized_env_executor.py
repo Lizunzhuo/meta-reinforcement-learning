@@ -107,6 +107,58 @@ class MetaParallelEnvExecutor(object):
         for remote in self.work_remotes:
             remote.close()
 
+    def step(self,actions):
+        """
+        Executes actions on each env
+        :param actions: lists of actions, of length meta_batch_siaze * envs_per_task
+        :return:
+                (tuple): a length 4 tuple of lists, containing obs (np.array), rewards (float), dones (bool), env_infos (dict)
+                each list is of length meta_batch_size * envs_per_task (assumes that every task has same number of envs)
+        """
+        assert len(actions) == self.num_envs
+
+        chunks = lambda l, n:[l[x:x+n] for x in range(0, len(l), n)]
+        actions_per_meta_task = chunks(actions,self.envs_per_task)
+
+        # step remote environments
+        for remote, action_list in zip(self.remotes, actions_per_meta_task):
+            remote.send(('step', action_list))
+
+        results = [remote.recv() for remote in self.remotes]
+        obs, rewards, dones, env_infos = map(lambda x: sum(x, []), zip(*results))
+
+        return obs, rewards, dones, env_infos
+
+    def reset(self):
+        """
+        Reset the environments of each worker
+        :return:
+                (list): list of (np.ndarray) with the new initial observations.
+        """
+        for remote in self.remotes:
+            remote.send(('reset', None))
+
+        return sum([remote.recv() for remote in self.remotes],[])
+
+    def get_tasks(self, tasks=None):
+        """
+        Sets a list og task to each worker
+        :param task: list of the tasks for each worker
+        :return:
+        """
+        for remote, task in zip(self.remotes, tasks):
+            remote.send(('set_task', task))
+        for remote in self.remotes:
+            remote.recv()
+
+    @property
+    def num_envs(self):
+        """
+        Number of environments
+        :return:
+                (int): number of environments
+        """
+        return self.n_envs
 
 def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
     """
@@ -160,3 +212,6 @@ def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
         elif cmd == 'close':
             remote.close()
             break
+
+        else:
+            raise NotImplementedError
